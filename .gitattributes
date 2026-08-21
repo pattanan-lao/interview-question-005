@@ -1,0 +1,12 @@
+# Normalize line endings so a Windows clone still produces a working Docker
+# build context: these files are copied into Linux containers, where CRLF can
+# break shell parsing and config readers.
+* text=auto
+
+Dockerfile      text eol=lf
+.dockerignore   text eol=lf
+*.sh            text eol=lf
+*.conf          text eol=lf
+*.sql           text eol=lf
+docker-compose.yml text eol=lf
+.env.example    text eol=lf
