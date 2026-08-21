@@ -1,0 +1,13 @@
+# .NET
+backend/**/bin/
+backend/**/obj/
+backend/Example.QueueSystem.Api/appsettings.Development.json
+
+# Angular / Node
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# OS
+.DS_Store
+Thumbs.db
