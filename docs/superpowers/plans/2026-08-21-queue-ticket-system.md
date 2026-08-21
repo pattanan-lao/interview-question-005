@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the 3-screen queue-ticket kiosk (IT 05-1/2/3) from interview test No. 5: an ASP.NET Core Web API backend backed by PostgreSQL with concurrency-safe ticket issuing, and an Angular frontend implementing the three mockup screens.
+**Goal:** Build the 3-screen queue-ticket kiosk (IT 05-1/2/3) from interview test No. 5: a Clean Architecture ASP.NET Core backend backed by PostgreSQL with concurrency-safe ticket issuing, and an Angular frontend implementing the three mockup screens.
 
-**Architecture:** Monorepo with `/backend` (ASP.NET Core Web API, `net10.0`) and `/frontend` (Angular 22, standalone components). The backend owns all queue state in PostgreSQL and exposes 3 REST endpoints; ticket issuance is made concurrency-safe with a `SELECT ... FOR UPDATE` row lock inside a single transaction. The frontend is a thin client: 3 routed pages that call the API and navigate between each other exactly as the mockups specify.
+**Architecture:** Monorepo with `/backend` (4-project Clean Architecture solution, `net10.0`) and `/frontend` (Angular 22, standalone components). Backend dependencies point inward: `Domain` (pure ticket-numbering rules, zero references) ← `Infrastructure` (PostgreSQL implementation of the repository port, plus schema bootstrap) and `Application` (ports + use-case orchestration, no project references) ← `Api` (composition root: DI wiring, controllers, HTTP DTOs). Ticket issuance is made concurrency-safe with a `SELECT ... FOR UPDATE` row lock inside a single transaction, entirely inside `Infrastructure`. The frontend is a thin client: 3 routed pages that call the API and navigate between each other exactly as the mockups specify.
 
 **Tech Stack:** ASP.NET Core Web API (net10.0, C# with controllers), Npgsql 10.0.3 (raw ADO.NET, no ORM), PostgreSQL 18, xUnit 2.9.3, Angular 22 (standalone components, `provideHttpClient`), npm.
 
@@ -12,7 +12,8 @@
 
 ## Global Constraints
 
-- Solution name: `Example.QueueSystem.sln`; backend root namespace: `Example.QueueSystem.Api` (per spec "Naming").
+- Solution name: `Example.QueueSystem.sln`; backend root namespace `Example.QueueSystem`, per-project suffix `.Domain` / `.Application` / `.Infrastructure` / `.Api` (per spec "Naming").
+- **Clean Architecture layering is mandatory** (per spec "Backend architecture", requested explicitly by the user): dependencies point inward only. `Domain` has zero project/package references. `Application` has zero project references and never touches `Domain` types. `Infrastructure` references `Application` and `Domain`. `Api` references `Application` and `Infrastructure`, but controllers depend on `IQueueService` (Application) only — never on `IQueueRepository`/`QueueRepository` directly.
 - Frontend package name: `example-com-queue-frontend`; browser title: "Example.com Queue System" (per spec "Naming").
 - Ticket sequence: `A0` → `A1` … `A9` → `B0` … `Z9`. After `Z9`, further "take ticket" requests are rejected (HTTP 409) — no wraparound (per spec "Ticket numbering rules").
 - "Clear Queue" resets state to `NULL`/`NULL`, displayed as `"00"` (per spec "Data model").
@@ -27,37 +28,70 @@
 
 ---
 
-### Task 1: Scaffold Backend Solution & Projects
+### Task 1: Scaffold Backend Solution & All Projects
 
 **Files:**
 - Create: `backend/Example.QueueSystem.sln`
+- Create: `backend/Example.QueueSystem.Domain/` (via `dotnet new classlib`)
+- Create: `backend/Example.QueueSystem.Domain.Tests/` (via `dotnet new xunit`)
+- Create: `backend/Example.QueueSystem.Application/` (via `dotnet new classlib`)
+- Create: `backend/Example.QueueSystem.Infrastructure/` (via `dotnet new classlib`)
+- Create: `backend/Example.QueueSystem.Infrastructure.Tests/` (via `dotnet new xunit`)
 - Create: `backend/Example.QueueSystem.Api/` (via `dotnet new webapi`)
-- Create: `backend/Example.QueueSystem.Api.Tests/` (via `dotnet new xunit`)
 - Modify: `backend/Example.QueueSystem.Api/Properties/launchSettings.json`
 - Create: `.gitignore` (repo root)
 
 **Interfaces:**
-- Produces: a buildable solution `backend/Example.QueueSystem.sln` containing both projects, with the test project referencing the API project. Backend listens on `http://localhost:5080` in the `Development` environment.
+- Produces: a buildable solution `backend/Example.QueueSystem.sln` with 6 projects and the reference graph `Domain.Tests → Domain`, `Infrastructure.Tests → Infrastructure`, `Application → (none)`, `Infrastructure → Application, Domain`, `Api → Application, Infrastructure`. Backend listens on `http://localhost:5080` in the `Development` environment.
 
-- [ ] **Step 1: Create the solution and projects**
+- [ ] **Step 1: Create the solution and all 6 projects**
 
 Run from the repo root (`C:\Workspace\interview-question-005`):
 
 ```bash
 dotnet new sln -n Example.QueueSystem -o backend
+
+dotnet new classlib -n Example.QueueSystem.Domain -o backend/Example.QueueSystem.Domain
+dotnet new xunit -n Example.QueueSystem.Domain.Tests -o backend/Example.QueueSystem.Domain.Tests
+
+dotnet new classlib -n Example.QueueSystem.Application -o backend/Example.QueueSystem.Application
+
+dotnet new classlib -n Example.QueueSystem.Infrastructure -o backend/Example.QueueSystem.Infrastructure
+dotnet new xunit -n Example.QueueSystem.Infrastructure.Tests -o backend/Example.QueueSystem.Infrastructure.Tests
+
 dotnet new webapi -n Example.QueueSystem.Api --use-controllers -o backend/Example.QueueSystem.Api
-dotnet new xunit -n Example.QueueSystem.Api.Tests -o backend/Example.QueueSystem.Api.Tests
+
+dotnet sln backend/Example.QueueSystem.sln add backend/Example.QueueSystem.Domain/Example.QueueSystem.Domain.csproj
+dotnet sln backend/Example.QueueSystem.sln add backend/Example.QueueSystem.Domain.Tests/Example.QueueSystem.Domain.Tests.csproj
+dotnet sln backend/Example.QueueSystem.sln add backend/Example.QueueSystem.Application/Example.QueueSystem.Application.csproj
+dotnet sln backend/Example.QueueSystem.sln add backend/Example.QueueSystem.Infrastructure/Example.QueueSystem.Infrastructure.csproj
+dotnet sln backend/Example.QueueSystem.sln add backend/Example.QueueSystem.Infrastructure.Tests/Example.QueueSystem.Infrastructure.Tests.csproj
 dotnet sln backend/Example.QueueSystem.sln add backend/Example.QueueSystem.Api/Example.QueueSystem.Api.csproj
-dotnet sln backend/Example.QueueSystem.sln add backend/Example.QueueSystem.Api.Tests/Example.QueueSystem.Api.Tests.csproj
-dotnet add backend/Example.QueueSystem.Api.Tests/Example.QueueSystem.Api.Tests.csproj reference backend/Example.QueueSystem.Api/Example.QueueSystem.Api.csproj
-dotnet add backend/Example.QueueSystem.Api/Example.QueueSystem.Api.csproj package Npgsql --version 10.0.3
 ```
 
-- [ ] **Step 2: Remove template sample files if present**
+- [ ] **Step 2: Wire up project references (the Clean Architecture dependency graph)**
 
-The `webapi` template may generate `backend/Example.QueueSystem.Api/WeatherForecast.cs` and `backend/Example.QueueSystem.Api/Controllers/WeatherForecastController.cs`. If either exists, delete it — they are not part of this app.
+```bash
+dotnet add backend/Example.QueueSystem.Domain.Tests/Example.QueueSystem.Domain.Tests.csproj reference backend/Example.QueueSystem.Domain/Example.QueueSystem.Domain.csproj
 
-- [ ] **Step 3: Pin the dev server to a fixed HTTP-only port**
+dotnet add backend/Example.QueueSystem.Infrastructure/Example.QueueSystem.Infrastructure.csproj reference backend/Example.QueueSystem.Application/Example.QueueSystem.Application.csproj
+dotnet add backend/Example.QueueSystem.Infrastructure/Example.QueueSystem.Infrastructure.csproj reference backend/Example.QueueSystem.Domain/Example.QueueSystem.Domain.csproj
+
+dotnet add backend/Example.QueueSystem.Infrastructure.Tests/Example.QueueSystem.Infrastructure.Tests.csproj reference backend/Example.QueueSystem.Infrastructure/Example.QueueSystem.Infrastructure.csproj
+
+dotnet add backend/Example.QueueSystem.Api/Example.QueueSystem.Api.csproj reference backend/Example.QueueSystem.Application/Example.QueueSystem.Application.csproj
+dotnet add backend/Example.QueueSystem.Api/Example.QueueSystem.Api.csproj reference backend/Example.QueueSystem.Infrastructure/Example.QueueSystem.Infrastructure.csproj
+
+dotnet add backend/Example.QueueSystem.Infrastructure/Example.QueueSystem.Infrastructure.csproj package Npgsql --version 10.0.3
+```
+
+Deliberately NOT added: `Application → Domain` (Application never references `Domain` — see Global Constraints), `Api → Domain` (Api never touches `Domain` types directly).
+
+- [ ] **Step 3: Remove template sample files if present**
+
+The `webapi` template may generate `backend/Example.QueueSystem.Api/WeatherForecast.cs` and `backend/Example.QueueSystem.Api/Controllers/WeatherForecastController.cs`. If either exists, delete it. The `classlib` template generates a placeholder `Class1.cs` in each of `Domain`, `Application`, and `Infrastructure` — delete all three; real types replace them in later tasks.
+
+- [ ] **Step 4: Pin the dev server to a fixed HTTP-only port**
 
 Overwrite `backend/Example.QueueSystem.Api/Properties/launchSettings.json` with:
 
@@ -80,7 +114,7 @@ Overwrite `backend/Example.QueueSystem.Api/Properties/launchSettings.json` with:
 
 (This drops the generated `https`/`IIS Express` profiles. Plain HTTP avoids requiring `dotnet dev-certs https --trust` for whoever reviews this — acceptable for a local interview-test kiosk.)
 
-- [ ] **Step 4: Create the root `.gitignore`**
+- [ ] **Step 5: Create the root `.gitignore`**
 
 Create `.gitignore` at the repo root:
 
@@ -100,42 +134,42 @@ frontend/.angular/
 Thumbs.db
 ```
 
-- [ ] **Step 5: Verify the solution builds**
+- [ ] **Step 6: Verify the solution builds**
 
 Run: `dotnet build backend/Example.QueueSystem.sln`
-Expected: `Build succeeded.` with 0 errors.
+Expected: `Build succeeded.` with 0 errors (all 6 projects currently near-empty, but the reference graph must resolve).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add backend .gitignore
-git commit -m "Scaffold backend solution: Web API + xUnit test project"
+git commit -m "Scaffold backend Clean Architecture solution: Domain, Application, Infrastructure, Api + test projects"
 ```
 
 ---
 
-### Task 2: Ticket Numbering Domain Logic
+### Task 2: Domain — Ticket Numbering Logic
 
 **Files:**
-- Create: `backend/Example.QueueSystem.Api/Services/TicketNumbering.cs`
-- Test: `backend/Example.QueueSystem.Api.Tests/TicketNumberingTests.cs`
+- Create: `backend/Example.QueueSystem.Domain/TicketNumbering.cs`
+- Test: `backend/Example.QueueSystem.Domain.Tests/TicketNumberingTests.cs`
 
 **Interfaces:**
-- Consumes: nothing (pure logic, no DB).
-- Produces (used by Task 3):
+- Consumes: nothing (pure logic, no DB, no other project).
+- Produces (used by Task 4, Infrastructure):
   - `readonly record struct QueuePosition(int LetterIndex, int Digit)`
   - `enum NextTicketOutcome { Issued, Exhausted }`
   - `readonly record struct NextTicketResult(NextTicketOutcome Outcome, QueuePosition? Position)`
-  - `static class TicketNumbering` with `static NextTicketResult Next(QueuePosition? current)` and `static string Format(QueuePosition? position)`, all in namespace `Example.QueueSystem.Api.Services`.
+  - `static class TicketNumbering` with `static NextTicketResult Next(QueuePosition? current)` and `static string Format(QueuePosition? position)`, all in namespace `Example.QueueSystem.Domain`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `backend/Example.QueueSystem.Api.Tests/TicketNumberingTests.cs`:
+Create `backend/Example.QueueSystem.Domain.Tests/TicketNumberingTests.cs`:
 
 ```csharp
-using Example.QueueSystem.Api.Services;
+using Example.QueueSystem.Domain;
 
-namespace Example.QueueSystem.Api.Tests;
+namespace Example.QueueSystem.Domain.Tests;
 
 public class TicketNumberingTests
 {
@@ -192,15 +226,15 @@ public class TicketNumberingTests
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `dotnet test backend/Example.QueueSystem.Api.Tests/Example.QueueSystem.Api.Tests.csproj`
-Expected: build FAILS (`TicketNumbering` does not exist in namespace `Example.QueueSystem.Api.Services`).
+Run: `dotnet test backend/Example.QueueSystem.Domain.Tests/Example.QueueSystem.Domain.Tests.csproj`
+Expected: build FAILS (`TicketNumbering` does not exist in namespace `Example.QueueSystem.Domain`).
 
 - [ ] **Step 3: Implement `TicketNumbering`**
 
-Create `backend/Example.QueueSystem.Api/Services/TicketNumbering.cs`:
+Create `backend/Example.QueueSystem.Domain/TicketNumbering.cs`:
 
 ```csharp
-namespace Example.QueueSystem.Api.Services;
+namespace Example.QueueSystem.Domain;
 
 public readonly record struct QueuePosition(int LetterIndex, int Digit);
 
@@ -256,43 +290,138 @@ public static class TicketNumbering
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `dotnet test backend/Example.QueueSystem.Api.Tests/Example.QueueSystem.Api.Tests.csproj`
+Run: `dotnet test backend/Example.QueueSystem.Domain.Tests/Example.QueueSystem.Domain.Tests.csproj`
 Expected: `Passed! - Failed: 0, Passed: 5`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/Example.QueueSystem.Api/Services/TicketNumbering.cs backend/Example.QueueSystem.Api.Tests/TicketNumberingTests.cs
-git commit -m "Add ticket numbering domain logic with unit tests"
+git add backend/Example.QueueSystem.Domain/TicketNumbering.cs backend/Example.QueueSystem.Domain.Tests/TicketNumberingTests.cs
+git commit -m "Add Domain ticket-numbering logic with unit tests"
 ```
 
 ---
 
-### Task 3: Queue Repository, Database Schema & Concurrency Test
+### Task 3: Application — Ports & Use-Case Orchestration
 
 **Files:**
-- Create: `backend/Example.QueueSystem.Api/Data/QueueSchema.cs`
-- Create: `backend/Example.QueueSystem.Api/Services/IQueueRepository.cs`
-- Create: `backend/Example.QueueSystem.Api/Services/QueueRepository.cs`
-- Test: `backend/Example.QueueSystem.Api.Tests/QueueRepositoryConcurrencyTests.cs`
+- Create: `backend/Example.QueueSystem.Application/IQueueRepository.cs`
+- Create: `backend/Example.QueueSystem.Application/IQueueService.cs`
+- Create: `backend/Example.QueueSystem.Application/QueueService.cs`
 
 **Interfaces:**
-- Consumes: `TicketNumbering.Next`, `TicketNumbering.Format`, `QueuePosition`, `NextTicketOutcome` from Task 2.
-- Produces (used by Task 4):
-  - `static class QueueSchema` with `static Task EnsureCreatedAsync(string connectionString, CancellationToken ct = default)` and `static Task ResetAsync(string connectionString, CancellationToken ct = default)`, namespace `Example.QueueSystem.Api.Data`.
+- Consumes: nothing from other projects (Application has no project references — see Global Constraints).
+- Produces (used by Task 4, Infrastructure, and Task 5, Api):
   - `record TakeTicketResult(bool Success, string? TicketNumber, DateTimeOffset? IssuedAt)`
   - `record CurrentQueueState(string TicketNumber, DateTimeOffset? IssuedAt)`
-  - `interface IQueueRepository` with `Task<TakeTicketResult> TakeTicketAsync(CancellationToken ct)`, `Task ClearAsync(CancellationToken ct)`, `Task<CurrentQueueState> GetCurrentAsync(CancellationToken ct)`.
-  - `class QueueRepository(string connectionString) : IQueueRepository`, namespace `Example.QueueSystem.Api.Services`.
+  - `interface IQueueRepository` — the port Infrastructure implements — with `Task<TakeTicketResult> TakeTicketAsync(CancellationToken ct)`, `Task ClearAsync(CancellationToken ct)`, `Task<CurrentQueueState> GetCurrentAsync(CancellationToken ct)`.
+  - `interface IQueueService` — the use case Api's controller calls — with the identical three method signatures.
+  - `class QueueService(IQueueRepository queueRepository) : IQueueService` — delegates each call straight to the repository.
+  - All in namespace `Example.QueueSystem.Application`.
+
+This task has no dedicated unit tests: `QueueService` is pure delegation with no branching logic of its own (see spec "Backend architecture"). It is exercised end-to-end by Task 4's integration tests (through `QueueRepository`, the concrete `IQueueRepository`) and Task 5's manual API smoke test (through `QueueService` itself, once it's wired into the controller).
+
+- [ ] **Step 1: Define the repository port**
+
+Create `backend/Example.QueueSystem.Application/IQueueRepository.cs`:
+
+```csharp
+namespace Example.QueueSystem.Application;
+
+public record TakeTicketResult(bool Success, string? TicketNumber, DateTimeOffset? IssuedAt);
+
+public record CurrentQueueState(string TicketNumber, DateTimeOffset? IssuedAt);
+
+public interface IQueueRepository
+{
+    Task<TakeTicketResult> TakeTicketAsync(CancellationToken ct);
+
+    Task ClearAsync(CancellationToken ct);
+
+    Task<CurrentQueueState> GetCurrentAsync(CancellationToken ct);
+}
+```
+
+- [ ] **Step 2: Define the use-case interface**
+
+Create `backend/Example.QueueSystem.Application/IQueueService.cs`:
+
+```csharp
+namespace Example.QueueSystem.Application;
+
+public interface IQueueService
+{
+    Task<TakeTicketResult> TakeTicketAsync(CancellationToken ct);
+
+    Task ClearAsync(CancellationToken ct);
+
+    Task<CurrentQueueState> GetCurrentAsync(CancellationToken ct);
+}
+```
+
+- [ ] **Step 3: Implement the use-case orchestrator**
+
+Create `backend/Example.QueueSystem.Application/QueueService.cs`:
+
+```csharp
+namespace Example.QueueSystem.Application;
+
+public class QueueService : IQueueService
+{
+    private readonly IQueueRepository _queueRepository;
+
+    public QueueService(IQueueRepository queueRepository)
+    {
+        _queueRepository = queueRepository;
+    }
+
+    public Task<TakeTicketResult> TakeTicketAsync(CancellationToken ct) =>
+        _queueRepository.TakeTicketAsync(ct);
+
+    public Task ClearAsync(CancellationToken ct) =>
+        _queueRepository.ClearAsync(ct);
+
+    public Task<CurrentQueueState> GetCurrentAsync(CancellationToken ct) =>
+        _queueRepository.GetCurrentAsync(ct);
+}
+```
+
+- [ ] **Step 4: Verify the solution still builds**
+
+Run: `dotnet build backend/Example.QueueSystem.sln`
+Expected: `Build succeeded.` with 0 errors.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/Example.QueueSystem.Application
+git commit -m "Add Application layer: queue repository port and use-case orchestration"
+```
+
+---
+
+### Task 4: Infrastructure — Database Schema, Queue Repository & Concurrency Test
+
+**Files:**
+- Create: `backend/Example.QueueSystem.Infrastructure/QueueSchema.cs`
+- Create: `backend/Example.QueueSystem.Infrastructure/QueueRepository.cs`
+- Test: `backend/Example.QueueSystem.Infrastructure.Tests/QueueRepositoryConcurrencyTests.cs`
+
+**Interfaces:**
+- Consumes: `TicketNumbering.Next`, `TicketNumbering.Format`, `QueuePosition`, `NextTicketOutcome` from Task 2 (`Domain`); `IQueueRepository`, `TakeTicketResult`, `CurrentQueueState` from Task 3 (`Application`).
+- Produces (used by Task 5, Api):
+  - `static class QueueSchema` with `static Task EnsureCreatedAsync(string connectionString, CancellationToken ct = default)` and `static Task ResetAsync(string connectionString, CancellationToken ct = default)`.
+  - `class QueueRepository(string connectionString) : IQueueRepository`.
+  - All in namespace `Example.QueueSystem.Infrastructure`.
 
 - [ ] **Step 1: Implement the schema helper**
 
-Create `backend/Example.QueueSystem.Api/Data/QueueSchema.cs`:
+Create `backend/Example.QueueSystem.Infrastructure/QueueSchema.cs`:
 
 ```csharp
 using Npgsql;
 
-namespace Example.QueueSystem.Api.Data;
+namespace Example.QueueSystem.Infrastructure;
 
 public static class QueueSchema
 {
@@ -342,35 +471,16 @@ public static class QueueSchema
 }
 ```
 
-- [ ] **Step 2: Define the repository contract**
+- [ ] **Step 2: Implement the concurrency-safe repository**
 
-Create `backend/Example.QueueSystem.Api/Services/IQueueRepository.cs`:
-
-```csharp
-namespace Example.QueueSystem.Api.Services;
-
-public record TakeTicketResult(bool Success, string? TicketNumber, DateTimeOffset? IssuedAt);
-
-public record CurrentQueueState(string TicketNumber, DateTimeOffset? IssuedAt);
-
-public interface IQueueRepository
-{
-    Task<TakeTicketResult> TakeTicketAsync(CancellationToken ct);
-
-    Task ClearAsync(CancellationToken ct);
-
-    Task<CurrentQueueState> GetCurrentAsync(CancellationToken ct);
-}
-```
-
-- [ ] **Step 3: Implement the concurrency-safe repository**
-
-Create `backend/Example.QueueSystem.Api/Services/QueueRepository.cs`:
+Create `backend/Example.QueueSystem.Infrastructure/QueueRepository.cs`:
 
 ```csharp
+using Example.QueueSystem.Application;
+using Example.QueueSystem.Domain;
 using Npgsql;
 
-namespace Example.QueueSystem.Api.Services;
+namespace Example.QueueSystem.Infrastructure;
 
 public class QueueRepository : IQueueRepository
 {
@@ -481,16 +591,15 @@ public class QueueRepository : IQueueRepository
 }
 ```
 
-- [ ] **Step 4: Write the concurrency integration test**
+- [ ] **Step 3: Write the concurrency integration test**
 
-Create `backend/Example.QueueSystem.Api.Tests/QueueRepositoryConcurrencyTests.cs`:
+Create `backend/Example.QueueSystem.Infrastructure.Tests/QueueRepositoryConcurrencyTests.cs`:
 
 ```csharp
 using System.Collections.Concurrent;
-using Example.QueueSystem.Api.Data;
-using Example.QueueSystem.Api.Services;
+using Example.QueueSystem.Infrastructure;
 
-namespace Example.QueueSystem.Api.Tests;
+namespace Example.QueueSystem.Infrastructure.Tests;
 
 public class QueueRepositoryConcurrencyTests : IAsyncLifetime
 {
@@ -544,28 +653,33 @@ public class QueueRepositoryConcurrencyTests : IAsyncLifetime
 }
 ```
 
-- [ ] **Step 5: Run the integration tests against the local test database**
+- [ ] **Step 4: Run the integration tests against the local test database**
 
-Set the connection string environment variable to the `queue_system_test` database prepared during planning (role `queue_app`, same password used for `appsettings.Development.json` in Task 4), then run the tests.
+Set the connection string environment variable to the `queue_system_test` database prepared during planning (role `queue_app`, same password used for `appsettings.Development.json` in Task 5), then run the tests.
 
 PowerShell:
 ```powershell
 $env:QUEUE_TEST_DB_CONNECTION_STRING = "Host=localhost;Port=5432;Database=queue_system_test;Username=queue_app;Password=<local-queue_app-password>"
-dotnet test backend/Example.QueueSystem.Api.Tests/Example.QueueSystem.Api.Tests.csproj
+dotnet test backend/Example.QueueSystem.Infrastructure.Tests/Example.QueueSystem.Infrastructure.Tests.csproj
 ```
 
-Expected: `Passed! - Failed: 0, Passed: 7` (5 from Task 2 + 2 here).
+Expected: `Passed! - Failed: 0, Passed: 2`
+
+- [ ] **Step 5: Run the full backend test suite (Domain + Infrastructure) once more**
+
+Run: `dotnet test backend/Example.QueueSystem.sln` (with `QUEUE_TEST_DB_CONNECTION_STRING` still set)
+Expected: all 7 tests pass (5 from Task 2 + 2 here).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/Example.QueueSystem.Api/Data/QueueSchema.cs backend/Example.QueueSystem.Api/Services/IQueueRepository.cs backend/Example.QueueSystem.Api/Services/QueueRepository.cs backend/Example.QueueSystem.Api.Tests/QueueRepositoryConcurrencyTests.cs
-git commit -m "Add concurrency-safe queue repository with row-locking and integration tests"
+git add backend/Example.QueueSystem.Infrastructure/QueueSchema.cs backend/Example.QueueSystem.Infrastructure/QueueRepository.cs backend/Example.QueueSystem.Infrastructure.Tests/QueueRepositoryConcurrencyTests.cs
+git commit -m "Add Infrastructure: concurrency-safe queue repository with row-locking and integration tests"
 ```
 
 ---
 
-### Task 4: Queue API Controller, DTOs & Program.cs Wiring
+### Task 5: Api — Controller, DTOs & Program.cs Composition Root
 
 **Files:**
 - Create: `backend/Example.QueueSystem.Api/Dtos/TicketResponseDto.cs`
@@ -576,8 +690,8 @@ git commit -m "Add concurrency-safe queue repository with row-locking and integr
 - Create: `backend/Example.QueueSystem.Api/appsettings.Development.json` (gitignored, not committed)
 
 **Interfaces:**
-- Consumes: `IQueueRepository`, `TakeTicketResult`, `CurrentQueueState` from Task 3.
-- Produces (used by Task 6, the frontend `QueueApiService`): HTTP API —
+- Consumes: `IQueueService`, `TakeTicketResult`, `CurrentQueueState` from Task 3 (`Application`); `QueueRepository`, `QueueSchema` from Task 4 (`Infrastructure`) — for DI wiring in `Program.cs` only, never from the controller.
+- Produces (used by Task 7, the frontend `QueueApiService`): HTTP API —
   - `POST /api/queue/tickets` → 200 `{ "ticketNumber": string, "issuedAt": string|null }` or 409 `{ "message": string }`
   - `POST /api/queue/clear` → 200 `{ "ticketNumber": "00", "issuedAt": null }`
   - `GET /api/queue/current` → 200 `{ "ticketNumber": string, "issuedAt": string|null }`
@@ -593,13 +707,13 @@ namespace Example.QueueSystem.Api.Dtos;
 public record TicketResponseDto(string TicketNumber, DateTimeOffset? IssuedAt);
 ```
 
-- [ ] **Step 2: Add the controller**
+- [ ] **Step 2: Add the controller (depends on `IQueueService`, not the repository)**
 
 Create `backend/Example.QueueSystem.Api/Controllers/QueueController.cs`:
 
 ```csharp
 using Example.QueueSystem.Api.Dtos;
-using Example.QueueSystem.Api.Services;
+using Example.QueueSystem.Application;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Example.QueueSystem.Api.Controllers;
@@ -608,17 +722,17 @@ namespace Example.QueueSystem.Api.Controllers;
 [Route("api/queue")]
 public class QueueController : ControllerBase
 {
-    private readonly IQueueRepository _queueRepository;
+    private readonly IQueueService _queueService;
 
-    public QueueController(IQueueRepository queueRepository)
+    public QueueController(IQueueService queueService)
     {
-        _queueRepository = queueRepository;
+        _queueService = queueService;
     }
 
     [HttpPost("tickets")]
     public async Task<ActionResult<TicketResponseDto>> TakeTicket(CancellationToken ct)
     {
-        var result = await _queueRepository.TakeTicketAsync(ct);
+        var result = await _queueService.TakeTicketAsync(ct);
 
         if (!result.Success)
         {
@@ -634,26 +748,26 @@ public class QueueController : ControllerBase
     [HttpPost("clear")]
     public async Task<ActionResult<TicketResponseDto>> Clear(CancellationToken ct)
     {
-        await _queueRepository.ClearAsync(ct);
+        await _queueService.ClearAsync(ct);
         return Ok(new TicketResponseDto("00", null));
     }
 
     [HttpGet("current")]
     public async Task<ActionResult<TicketResponseDto>> GetCurrent(CancellationToken ct)
     {
-        var state = await _queueRepository.GetCurrentAsync(ct);
+        var state = await _queueService.GetCurrentAsync(ct);
         return Ok(new TicketResponseDto(state.TicketNumber, state.IssuedAt));
     }
 }
 ```
 
-- [ ] **Step 3: Wire up `Program.cs`**
+- [ ] **Step 3: Wire up `Program.cs` (the composition root)**
 
 Overwrite `backend/Example.QueueSystem.Api/Program.cs` with:
 
 ```csharp
-using Example.QueueSystem.Api.Data;
-using Example.QueueSystem.Api.Services;
+using Example.QueueSystem.Application;
+using Example.QueueSystem.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -663,6 +777,7 @@ var connectionString = builder.Configuration.GetConnectionString("QueueDb")
         "to appsettings.Development.json and fill in your local PostgreSQL password.");
 
 builder.Services.AddSingleton<IQueueRepository>(_ => new QueueRepository(connectionString));
+builder.Services.AddScoped<IQueueService, QueueService>();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
@@ -691,6 +806,8 @@ app.MapControllers();
 
 app.Run();
 ```
+
+Note this is the only file in the whole solution that references both `Application` and `Infrastructure` concrete types together — that's expected and correct for a composition root.
 
 - [ ] **Step 4: Add the (secret-free) connection string placeholder to `appsettings.json`**
 
@@ -753,21 +870,21 @@ Expected: first call returns `{ticketNumber: "A0", issuedAt: <timestamp>}`; seco
 
 - [ ] **Step 8: Run the full backend test suite once more**
 
-Run: `dotnet test backend/Example.QueueSystem.sln` (with `QUEUE_TEST_DB_CONNECTION_STRING` still set as in Task 3 Step 5)
+Run: `dotnet test backend/Example.QueueSystem.sln` (with `QUEUE_TEST_DB_CONNECTION_STRING` still set as in Task 4 Step 4)
 Expected: all 7 tests pass.
 
 - [ ] **Step 9: Commit**
 
 ```bash
 git add backend/Example.QueueSystem.Api/Dtos backend/Example.QueueSystem.Api/Controllers backend/Example.QueueSystem.Api/Program.cs backend/Example.QueueSystem.Api/appsettings.json backend/Example.QueueSystem.Api/appsettings.Development.json.example
-git commit -m "Add queue API controller and wire up DI, CORS, and schema bootstrap"
+git commit -m "Add Api layer: queue controller and composition-root DI wiring"
 ```
 
 (Do not `git add` the real `appsettings.Development.json` — it's gitignored.)
 
 ---
 
-### Task 5: Scaffold Angular Workspace
+### Task 6: Scaffold Angular Workspace
 
 **Files:**
 - Create: `frontend/` (via `ng new`)
@@ -834,18 +951,18 @@ git commit -m "Scaffold Angular frontend workspace"
 
 ---
 
-### Task 6: Shared Styles, Routing, HTTP Client & QueueApiService
+### Task 7: Shared Styles, Routing, HTTP Client & QueueApiService
 
 **Files:**
 - Modify: `frontend/src/styles.css`
 - Modify: `frontend/src/app/app.config.ts`
 - Create: `frontend/src/app/core/api-config.ts`
 - Create: `frontend/src/app/core/queue-api.service.ts`
-- Modify: `frontend/src/app/app.routes.ts` (placeholder routes array; real routes wired in Task 9 once all 3 page components exist — see note in Step 4)
+- Modify: `frontend/src/app/app.routes.ts` (placeholder routes array; real routes wired in Task 10 once all 3 page components exist — see note in Step 5)
 
 **Interfaces:**
-- Consumes: the API contract from Task 4 (`POST /api/queue/tickets`, `POST /api/queue/clear`, `GET /api/queue/current`).
-- Produces (used by Tasks 7, 8, 9):
+- Consumes: the API contract from Task 5 (`POST /api/queue/tickets`, `POST /api/queue/clear`, `GET /api/queue/current`).
+- Produces (used by Tasks 8, 9, 10):
   - `interface TicketResponse { ticketNumber: string; issuedAt: string | null }`
   - `class QueueApiService` (providedIn root) with `takeTicket(): Observable<TicketResponse>`, `clearQueue(): Observable<TicketResponse>`, `getCurrent(): Observable<TicketResponse>`.
   - Global CSS classes: `.kiosk-page`, `.kiosk-header`, `.kiosk-button`, `.kiosk-button--primary`, `.kiosk-button--secondary`, `.kiosk-ticket-number`.
@@ -994,7 +1111,7 @@ export class QueueApiService {
 
 - [ ] **Step 5: Leave routes empty for now**
 
-Confirm `frontend/src/app/app.routes.ts` still contains the generated empty array — it will be filled in at the end of Task 9 once all 3 page components exist:
+Confirm `frontend/src/app/app.routes.ts` still contains the generated empty array — it will be filled in at the end of Task 10 once all 3 page components exist:
 
 ```typescript
 import { Routes } from '@angular/router';
@@ -1016,7 +1133,7 @@ git commit -m "Add shared kiosk styles, HTTP client, and QueueApiService"
 
 ---
 
-### Task 7: IT 05-1 — Take Ticket Page
+### Task 8: IT 05-1 — Take Ticket Page
 
 **Files:**
 - Create: `frontend/src/app/pages/take-ticket/take-ticket.ts`
@@ -1024,7 +1141,7 @@ git commit -m "Add shared kiosk styles, HTTP client, and QueueApiService"
 - Create: `frontend/src/app/pages/take-ticket/take-ticket.css`
 
 **Interfaces:**
-- Consumes: `QueueApiService.takeTicket()`, `TicketResponse` from Task 6.
+- Consumes: `QueueApiService.takeTicket()`, `TicketResponse` from Task 7.
 - Produces: standalone component `TakeTicket`, selector `app-take-ticket`. On successful take, navigates to `/ticket` passing the issued `TicketResponse` as router state (`{ ticket }`). "ล้างคิว" navigates to `/clear`.
 
 - [ ] **Step 1: Create the component**
@@ -1121,7 +1238,7 @@ git commit -m "Add IT 05-1 take-ticket page"
 
 ---
 
-### Task 8: IT 05-2 — Show Ticket Page
+### Task 9: IT 05-2 — Show Ticket Page
 
 **Files:**
 - Create: `frontend/src/app/pages/show-ticket/show-ticket.ts`
@@ -1129,7 +1246,7 @@ git commit -m "Add IT 05-1 take-ticket page"
 - Create: `frontend/src/app/pages/show-ticket/show-ticket.css`
 
 **Interfaces:**
-- Consumes: `QueueApiService.getCurrent()`, `TicketResponse` from Task 6.
+- Consumes: `QueueApiService.getCurrent()`, `TicketResponse` from Task 7.
 - Produces: standalone component `ShowTicket`, selector `app-show-ticket`. Reads the ticket passed via router state (falling back to `getCurrent()` if navigated to directly, e.g. on refresh). "กลับไปหน้ารับบัตรคิว" navigates to `/`.
 
 - [ ] **Step 1: Create the component**
@@ -1213,7 +1330,7 @@ git commit -m "Add IT 05-2 show-ticket page"
 
 ---
 
-### Task 9: IT 05-3 — Clear Queue Page & Route Wiring
+### Task 10: IT 05-3 — Clear Queue Page & Route Wiring
 
 **Files:**
 - Create: `frontend/src/app/pages/clear-queue/clear-queue.ts`
@@ -1222,7 +1339,7 @@ git commit -m "Add IT 05-2 show-ticket page"
 - Modify: `frontend/src/app/app.routes.ts`
 
 **Interfaces:**
-- Consumes: `QueueApiService.getCurrent()`, `QueueApiService.clearQueue()`, `TicketResponse` from Task 6; `TakeTicket` (Task 7) and `ShowTicket` (Task 8) for route wiring.
+- Consumes: `QueueApiService.getCurrent()`, `QueueApiService.clearQueue()`, `TicketResponse` from Task 7; `TakeTicket` (Task 8) and `ShowTicket` (Task 9) for route wiring.
 - Produces: standalone component `ClearQueue`, selector `app-clear-queue`. Final routes: `/` → `TakeTicket`, `/ticket` → `ShowTicket`, `/clear` → `ClearQueue`, any other path redirects to `/`.
 
 - [ ] **Step 1: Create the component**
@@ -1317,13 +1434,13 @@ git commit -m "Add IT 05-3 clear-queue page and wire up routing"
 
 ---
 
-### Task 10: Root README, Final `.gitignore` Check & End-to-End Manual Verification
+### Task 11: Root README, Final `.gitignore` Check & End-to-End Manual Verification
 
 **Files:**
 - Create: `README.md` (repo root)
 
 **Interfaces:**
-- Consumes: nothing new — this task documents and manually verifies the full system built in Tasks 1–9.
+- Consumes: nothing new — this task documents and manually verifies the full system built in Tasks 1–10.
 
 - [ ] **Step 1: Write the root README**
 
@@ -1334,6 +1451,19 @@ Create `README.md` at the repo root:
 
 Queue-ticket kiosk built for interview test No. 5: take a ticket (A0–Z9),
 view the issued ticket number, and clear the queue back to "00".
+
+## Architecture
+
+The backend follows Clean Architecture with 4 projects (dependencies point
+inward, `Domain` at the center):
+
+- `Example.QueueSystem.Domain` — pure ticket-numbering rules, no dependencies.
+- `Example.QueueSystem.Application` — ports (`IQueueRepository`) and the
+  use case (`IQueueService`/`QueueService`) the API calls.
+- `Example.QueueSystem.Infrastructure` — PostgreSQL implementation of
+  `IQueueRepository`, plus schema bootstrap.
+- `Example.QueueSystem.Api` — composition root (DI, CORS) and HTTP controllers.
+  Controllers depend on `IQueueService` only, never on the repository directly.
 
 ## Prerequisites
 
@@ -1370,7 +1500,7 @@ The API listens on `http://localhost:5080`.
 Unit tests (no database required):
 
 \`\`\`bash
-dotnet test backend/Example.QueueSystem.Api.Tests/Example.QueueSystem.Api.Tests.csproj --filter TicketNumberingTests
+dotnet test backend/Example.QueueSystem.Domain.Tests/Example.QueueSystem.Domain.Tests.csproj
 \`\`\`
 
 Integration tests (require the `queue_system_test` database from the setup step above):
@@ -1434,7 +1564,7 @@ Fix any discrepancy before proceeding. Stop both servers (Ctrl+C in each termina
 
 ```bash
 git add README.md
-git commit -m "Add root README with setup, testing, and limitations"
+git commit -m "Add root README with architecture, setup, testing, and limitations"
 ```
 
 ---
