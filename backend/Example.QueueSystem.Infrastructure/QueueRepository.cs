@@ -83,8 +83,15 @@ public class QueueRepository : IQueueRepository
         await connection.OpenAsync(ct);
 
         QueuePosition? current = null;
+        DateTimeOffset? issuedAt = null;
+
         await using (var command = new NpgsqlCommand(
-            "SELECT current_letter_index, current_digit FROM queue_state WHERE id = 1", connection))
+            """
+            SELECT s.current_letter_index, s.current_digit, t.issued_at
+            FROM queue_state s
+            LEFT JOIN queue_tickets t ON t.id = (SELECT id FROM queue_tickets ORDER BY id DESC LIMIT 1)
+            WHERE s.id = 1
+            """, connection))
         {
             await using var reader = await command.ExecuteReaderAsync(ct);
             await reader.ReadAsync(ct);
@@ -92,22 +99,13 @@ public class QueueRepository : IQueueRepository
             {
                 current = new QueuePosition(reader.GetInt16(0), reader.GetInt16(1));
             }
-        }
-
-        var ticketNumber = TicketNumbering.Format(current);
-        DateTimeOffset? issuedAt = null;
-
-        if (current is not null)
-        {
-            await using var lastCommand = new NpgsqlCommand(
-                "SELECT issued_at FROM queue_tickets ORDER BY id DESC LIMIT 1", connection);
-            var result = await lastCommand.ExecuteScalarAsync(ct);
-            if (result is DateTimeOffset dt)
+            if (!reader.IsDBNull(2))
             {
-                issuedAt = dt;
+                issuedAt = reader.GetFieldValue<DateTimeOffset>(2);
             }
         }
 
-        return new CurrentQueueState(ticketNumber, issuedAt);
+        var ticketNumber = TicketNumbering.Format(current);
+        return new CurrentQueueState(ticketNumber, current is null ? null : issuedAt);
     }
 }
