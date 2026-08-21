@@ -1,5 +1,25 @@
 /* You can add global styles to this file, and also import other style files */
 
+/* ---------------------------------------------------------------
+   ThaiBev corporate identity palette
+
+   --tb-green and --tb-gold are sampled directly from the two fills
+   in the official ThaiBev logo vector. The remaining values are
+   tints/shades derived from those two.
+   --------------------------------------------------------------- */
+:root {
+  --tb-green: #00783F;       /* corporate green - primary (logo fill) */
+  --tb-green-dark: #005C30;  /* pressed / hover */
+  --tb-green-tint: #EFF5F1;  /* page background wash */
+  --tb-gold: #AE841F;        /* corporate gold - accent (logo fill) */
+  --tb-gold-light: #C79A2B;  /* focus ring */
+  --tb-grey: #6B7A70;        /* secondary action */
+  --tb-grey-dark: #566259;
+  --tb-text: #1B2A22;
+  --tb-white: #ffffff;
+  --tb-error: #B3261E;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -8,6 +28,7 @@ html, body {
   margin: 0;
   height: 100%;
   font-family: 'Segoe UI', Tahoma, sans-serif;
+  color: var(--tb-text);
 }
 
 .kiosk-page {
@@ -15,17 +36,19 @@ html, body {
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
-  background: #ffffff;
+  background: var(--tb-green-tint);
 }
 
 .kiosk-header {
   width: 100%;
-  background: #22a559;
-  color: #ffffff;
+  background: var(--tb-green);
+  color: var(--tb-white);
+  border-bottom: 4px solid var(--tb-gold);
   text-align: center;
   padding: 0.75rem 0;
   font-size: 1rem;
   font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .kiosk-body {
@@ -41,11 +64,12 @@ html, body {
 .kiosk-button {
   border: none;
   border-radius: 8px;
-  color: #ffffff;
+  color: var(--tb-white);
   font-size: 1.5rem;
   font-weight: 700;
   padding: 1.5rem 3rem;
   cursor: pointer;
+  transition: background-color 0.15s ease;
 }
 
 .kiosk-button:disabled {
@@ -54,17 +78,31 @@ html, body {
 }
 
 .kiosk-button--primary {
-  background: #4472c4;
+  background: var(--tb-green);
+}
+
+.kiosk-button--primary:hover:not(:disabled) {
+  background: var(--tb-green-dark);
 }
 
 .kiosk-button--secondary {
-  background: #a6a6a6;
+  background: var(--tb-grey);
+}
+
+.kiosk-button--secondary:hover:not(:disabled) {
+  background: var(--tb-grey-dark);
+}
+
+.kiosk-button:focus-visible {
+  outline: 3px solid var(--tb-gold-light);
+  outline-offset: 3px;
 }
 
 .kiosk-ticket-number {
   font-size: 6rem;
   font-weight: 700;
   margin: 0.5rem 0;
+  color: var(--tb-green);
 }
 
 .kiosk-footer-button {
@@ -72,6 +110,6 @@ html, body {
 }
 
 .kiosk-error {
-  color: #c0392b;
+  color: var(--tb-error);
   font-size: 1.1rem;
 }
