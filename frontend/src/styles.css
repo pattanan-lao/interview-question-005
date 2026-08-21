@@ -1,0 +1,77 @@
+/* You can add global styles to this file, and also import other style files */
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+}
+
+.kiosk-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  background: #ffffff;
+}
+
+.kiosk-header {
+  width: 100%;
+  background: #22a559;
+  color: #ffffff;
+  text-align: center;
+  padding: 0.75rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.kiosk-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.kiosk-button {
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 1.5rem;
+  font-weight: 700;
+  padding: 1.5rem 3rem;
+  cursor: pointer;
+}
+
+.kiosk-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.kiosk-button--primary {
+  background: #4472c4;
+}
+
+.kiosk-button--secondary {
+  background: #a6a6a6;
+}
+
+.kiosk-ticket-number {
+  font-size: 6rem;
+  font-weight: 700;
+  margin: 0.5rem 0;
+}
+
+.kiosk-footer-button {
+  margin-bottom: 3rem;
+}
+
+.kiosk-error {
+  color: #c0392b;
+  font-size: 1.1rem;
+}

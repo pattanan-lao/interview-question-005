@@ -1,0 +1,16 @@
+<div class="kiosk-page">
+  <div class="kiosk-header">IT 05-2</div>
+  <div class="kiosk-body">
+    <p>หมายเลขคิว</p>
+    <p class="kiosk-ticket-number">{{ ticket()?.ticketNumber ?? '00' }}</p>
+    @if (ticket()?.issuedAt) {
+      <p>วันที่ : {{ ticket()!.issuedAt | date: 'dd/MM/yyyy' }} เวลา {{ ticket()!.issuedAt | date: 'HH:mm' }} น.</p>
+    }
+    @if (errorMessage()) {
+      <p class="kiosk-error">{{ errorMessage() }}</p>
+    }
+  </div>
+  <button class="kiosk-button kiosk-button--primary kiosk-footer-button" (click)="onBack()">
+    กลับไปหน้ารับบัตรคิว
+  </button>
+</div>

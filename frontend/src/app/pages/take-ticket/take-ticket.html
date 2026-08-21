@@ -1,0 +1,14 @@
+<div class="kiosk-page">
+  <div class="kiosk-header">IT 05-1</div>
+  <div class="kiosk-body">
+    <button class="kiosk-button kiosk-button--primary" (click)="onTakeTicket()" [disabled]="isSubmitting()">
+      รับบัตรคิว
+    </button>
+    @if (errorMessage()) {
+      <p class="kiosk-error">{{ errorMessage() }}</p>
+    }
+  </div>
+  <button class="kiosk-button kiosk-button--secondary kiosk-footer-button" (click)="onClearQueue()">
+    ล้างคิว
+  </button>
+</div>

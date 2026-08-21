@@ -18,9 +18,64 @@ as if working at a company called `example.com`.
 ## Naming
 
 - Solution: `Example.QueueSystem.sln`
-- Backend namespace/root: `Example.QueueSystem.Api`
+- Backend root namespace: `Example.QueueSystem` (per-project suffix: `.Domain`, `.Application`, `.Infrastructure`, `.Api`)
 - Frontend package name: `example-com-queue-frontend`
 - Browser title: "Example.com Queue System"
+
+## Backend architecture (Clean Architecture)
+
+The backend is split into 4 projects so dependencies point inward, per
+Clean Architecture's Dependency Rule — inner layers know nothing about
+outer layers:
+
+```
+Example.QueueSystem.Api  ──────────────┐
+        │  (composition root: DI, HTTP)│
+        ▼                              ▼
+Example.QueueSystem.Application   Example.QueueSystem.Infrastructure
+   (ports + use cases,                 │  (implements the ports)
+    no project references)             ▼
+                              Example.QueueSystem.Domain
+                           (pure business rules, zero dependencies)
+```
+
+- **`Example.QueueSystem.Domain`** — pure business rules, no project or
+  package references. Owns ticket-numbering logic (`TicketNumbering`,
+  `QueuePosition`, `NextTicketOutcome`, `NextTicketResult`). Fully unit
+  testable with no database.
+- **`Example.QueueSystem.Application`** — no project references of its
+  own (pure C# on top of the BCL). Defines the port `IQueueRepository`
+  (and its result types `TakeTicketResult`, `CurrentQueueState`) that
+  outer layers implement, and the use-case interface/implementation
+  `IQueueService`/`QueueService` that the API layer calls. `QueueService`
+  is a thin orchestrator today (it delegates straight to
+  `IQueueRepository`); it exists so business rules that aren't purely
+  numeric (e.g. future validation, logging, notifications) have a layer
+  to live in without the API talking to persistence directly. It works
+  entirely in terms of the repository's result types rather than
+  `Domain` types, since the numbering decision is made inside
+  Infrastructure's transaction — so Application has no reason to
+  reference `Domain`, and doesn't. Because it currently contains no
+  branching logic of its own, it is exercised through the Infrastructure
+  integration tests and the API smoke test rather than a redundant
+  dedicated unit test suite.
+- **`Example.QueueSystem.Infrastructure`** — references `Application`
+  (to implement `IQueueRepository`) and `Domain` (to compute the next
+  ticket). Implements `IQueueRepository` against PostgreSQL
+  (`QueueRepository`, using `Domain.TicketNumbering` for the actual
+  numbering decision inside its transaction) and owns schema bootstrap
+  (`QueueSchema`).
+- **`Example.QueueSystem.Api`** — references `Application` and
+  `Infrastructure`. This is the only project allowed to reference
+  `Infrastructure`, and only for composition-root DI registration in
+  `Program.cs` — controllers depend on `IQueueService` from `Application`,
+  never on `IQueueRepository`/`QueueRepository` directly. Owns
+  `QueueController` and the HTTP DTOs.
+
+Test projects mirror this: `Example.QueueSystem.Domain.Tests` (pure unit
+tests, no DB) and `Example.QueueSystem.Infrastructure.Tests` (integration
+tests against a real local PostgreSQL, covering the concurrency-safety
+requirement end to end through the real `QueueRepository`).
 
 ## Screens
 
@@ -33,8 +88,11 @@ as if working at a company called `example.com`.
 
 ### IT 05-2 — Show Ticket Number
 - Displays `หมายเลขคิว` (Queue Number) and the issued date/time.
-- On load, calls `GET /api/queue/current` (resilient to page refresh /
-  direct navigation, not solely reliant on client router state).
+- On load, prefers the ticket passed via client router state (from IT 05-1)
+  so a page refresh keeps showing *this* ticket rather than whatever the
+  queue's current state has become; falls back to `GET /api/queue/current`
+  only when no router state is present (e.g. direct navigation to this
+  screen), so the screen is never left blank.
 - Button "กลับไปหน้ารับบัตรคิว" (Back to Take Ticket) → navigates to IT 05-1.
 
 ### IT 05-3 — Clear Queue
@@ -103,13 +161,15 @@ same ticket number or skip a number, satisfying the requirement doc's
 
 ## Testing
 
-- **Unit tests** (xUnit, no DB): pure ticket-increment logic — `A0→A1`,
-  `A9→B0`, `Z9→exhausted`, clear resets to `NULL`.
-- **Integration tests** (xUnit, requires a live local PostgreSQL via a
-  connection string in test config): fire N concurrent take-ticket
-  requests and assert the resulting ticket set has no duplicates and no
-  gaps. Documented in the README as requiring a real DB to run, since
-  local dev was chosen to be Docker-free.
+- **Unit tests** (`Example.QueueSystem.Domain.Tests`, xUnit, no DB): pure
+  ticket-increment logic — `A0→A1`, `A9→B0`, `Z9→exhausted`, clear resets
+  to `NULL`.
+- **Integration tests** (`Example.QueueSystem.Infrastructure.Tests`,
+  xUnit, requires a live local PostgreSQL via a connection string in test
+  config): fire N concurrent take-ticket requests and assert the
+  resulting ticket set has no duplicates and no gaps. Documented in the
+  README as requiring a real DB to run, since local dev was chosen to be
+  Docker-free.
 
 ## Limitations (documented in README)
 
