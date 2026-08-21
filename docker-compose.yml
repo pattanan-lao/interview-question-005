@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: queue_system
+      POSTGRES_USER: queue_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (copy .env.example)}
+    volumes:
+      # Mounted at /var/lib/postgresql, NOT /var/lib/postgresql/data: the
+      # postgres:18+ images store data in a major-version subdirectory and
+      # refuse to start if the volume is mounted at the old data path.
+      - queue_pgdata:/var/lib/postgresql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # -h 127.0.0.1 forces a TCP check. During first-run initialization the
+      # image starts a temporary socket-only server; a socket check would
+      # report healthy too early and the API would fail to connect.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U queue_app -d queue_system"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    ports:
+      # Published so the host can run the integration tests (and psql) against
+      # the containerized database. Deliberately far from 5432/5433: those are
+      # commonly taken by a local PostgreSQL install, and on Windows a partial
+      # clash is silent — the local server keeps 0.0.0.0 while Docker binds
+      # only ::, so `Host=localhost` reaches the wrong server with a confusing
+      # authentication error instead of a bind failure. Override with
+      # POSTGRES_HOST_PORT in .env if 15432 is taken too.
+      - "${POSTGRES_HOST_PORT:-15432}:5432"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      # Program.cs reads ConnectionStrings:QueueDb; the __ separator is the
+      # standard .NET env-var mapping, so no application code change is needed.
+      ConnectionStrings__QueueDb: Host=postgres;Port=5432;Database=queue_system;Username=queue_app;Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (copy .env.example)}
+      ASPNETCORE_ENVIRONMENT: Production
+    depends_on:
+      postgres:
+        # Required, not cosmetic: QueueSchema.EnsureCreatedAsync opens a
+        # connection at startup with no retry, so the API would crash-loop
+        # if it started before PostgreSQL was accepting connections.
+        condition: service_healthy
+    restart: unless-stopped
+    # Not published either: reachable only through the frontend's /api proxy.
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  queue_pgdata:
