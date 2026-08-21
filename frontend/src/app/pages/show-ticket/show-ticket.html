@@ -6,6 +6,9 @@
     @if (ticket()?.issuedAt) {
       <p>วันที่ : {{ ticket()!.issuedAt | date: 'dd/MM/yyyy' }} เวลา {{ ticket()!.issuedAt | date: 'HH:mm' }} น.</p>
     }
+    @if (errorMessage()) {
+      <p class="kiosk-error">{{ errorMessage() }}</p>
+    }
   </div>
   <button class="kiosk-button kiosk-button--primary kiosk-footer-button" (click)="onBack()">
     กลับไปหน้ารับบัตรคิว

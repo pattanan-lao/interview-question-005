@@ -3,10 +3,13 @@ using Example.QueueSystem.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString("QueueDb")
-    ?? throw new InvalidOperationException(
+var connectionString = builder.Configuration.GetConnectionString("QueueDb");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
         "Connection string 'QueueDb' is not configured. Copy appsettings.Development.json.example " +
         "to appsettings.Development.json and fill in your local PostgreSQL password.");
+}
 
 builder.Services.AddSingleton<IQueueRepository>(_ => new QueueRepository(connectionString));
 builder.Services.AddScoped<IQueueService, QueueService>();

@@ -13,13 +13,21 @@ export class ClearQueue implements OnInit {
   private readonly router = inject(Router);
 
   protected readonly ticket = signal<TicketResponse | null>(null);
+  protected readonly errorMessage = signal<string | null>(null);
 
   ngOnInit(): void {
-    this.queueApi.getCurrent().subscribe((current) => this.ticket.set(current));
+    this.queueApi.getCurrent().subscribe({
+      next: (current) => this.ticket.set(current),
+      error: () => this.errorMessage.set('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง'),
+    });
   }
 
   protected onClearQueue(): void {
-    this.queueApi.clearQueue().subscribe((current) => this.ticket.set(current));
+    this.errorMessage.set(null);
+    this.queueApi.clearQueue().subscribe({
+      next: (current) => this.ticket.set(current),
+      error: () => this.errorMessage.set('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง'),
+    });
   }
 
   protected onBack(): void {

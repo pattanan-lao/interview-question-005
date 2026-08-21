@@ -54,12 +54,21 @@ Unit tests (no database required):
 dotnet test backend/Example.QueueSystem.Domain.Tests/Example.QueueSystem.Domain.Tests.csproj
 ```
 
-Integration tests (require the `queue_system_test` database from the setup step above):
+Integration tests (require the `queue_system_test` database from the setup step above).
+**Warning:** point `QUEUE_TEST_DB_CONNECTION_STRING` at a disposable database only —
+the test fixture calls `QueueSchema.ResetAsync`, which drops and recreates tables, so
+pointing it at `queue_system` (the real dev database) would destroy your dev data.
 
 ```bash
 # PowerShell
 $env:QUEUE_TEST_DB_CONNECTION_STRING = "Host=localhost;Port=5432;Database=queue_system_test;Username=queue_app;Password=your-password"
 dotnet test backend/Example.QueueSystem.sln
+```
+
+Frontend tests:
+
+```bash
+npm test --prefix frontend
 ```
 
 ## Frontend setup

@@ -4,6 +4,9 @@
     <button class="kiosk-button kiosk-button--primary" (click)="onClearQueue()">ล้างคิว</button>
     <p>หมายเลขคิวปัจจุบัน</p>
     <p class="kiosk-ticket-number">{{ ticket()?.ticketNumber ?? '00' }}</p>
+    @if (errorMessage()) {
+      <p class="kiosk-error">{{ errorMessage() }}</p>
+    }
   </div>
   <button class="kiosk-button kiosk-button--primary kiosk-footer-button" (click)="onBack()">
     กลับไปหน้ารับบัตรคิว

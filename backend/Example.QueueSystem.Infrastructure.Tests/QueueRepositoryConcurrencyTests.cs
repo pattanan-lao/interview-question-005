@@ -52,4 +52,43 @@ public class QueueRepositoryConcurrencyTests : IAsyncLifetime
         Assert.True(result.Success);
         Assert.Equal("A0", result.TicketNumber);
     }
+
+    [Fact]
+    public async Task TakeTicketAsync_WhenQueueIsFull_ReturnsFailureWithoutThrowing()
+    {
+        const int totalCapacity = 26 * 10; // A0-Z9
+
+        for (var i = 0; i < totalCapacity; i++)
+        {
+            var result = await _repository.TakeTicketAsync(CancellationToken.None);
+            Assert.True(result.Success);
+        }
+
+        var exhaustedResult = await _repository.TakeTicketAsync(CancellationToken.None);
+
+        Assert.False(exhaustedResult.Success);
+        Assert.Null(exhaustedResult.TicketNumber);
+        Assert.Null(exhaustedResult.IssuedAt);
+    }
+
+    [Fact]
+    public async Task GetCurrentAsync_WhenQueueIsFresh_ReturnsZeroZeroWithNoIssuedAt()
+    {
+        var current = await _repository.GetCurrentAsync(CancellationToken.None);
+
+        Assert.Equal("00", current.TicketNumber);
+        Assert.Null(current.IssuedAt);
+    }
+
+    [Fact]
+    public async Task GetCurrentAsync_AfterTakingATicket_ReturnsThatTicketWithIssuedAt()
+    {
+        var taken = await _repository.TakeTicketAsync(CancellationToken.None);
+        Assert.True(taken.Success);
+
+        var current = await _repository.GetCurrentAsync(CancellationToken.None);
+
+        Assert.Equal(taken.TicketNumber, current.TicketNumber);
+        Assert.NotNull(current.IssuedAt);
+    }
 }

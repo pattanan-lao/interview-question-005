@@ -15,6 +15,7 @@ export class ShowTicket implements OnInit {
   private readonly location = inject(Location);
 
   protected readonly ticket = signal<TicketResponse | null>(null);
+  protected readonly errorMessage = signal<string | null>(null);
 
   ngOnInit(): void {
     const state = this.location.getState() as { ticket?: TicketResponse };
@@ -24,7 +25,10 @@ export class ShowTicket implements OnInit {
       return;
     }
 
-    this.queueApi.getCurrent().subscribe((current) => this.ticket.set(current));
+    this.queueApi.getCurrent().subscribe({
+      next: (current) => this.ticket.set(current),
+      error: () => this.errorMessage.set('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง'),
+    });
   }
 
   protected onBack(): void {
