@@ -9,7 +9,8 @@ as if working at a company called `example.com`.
 
 ## Stack
 
-- Backend: ASP.NET Core Web API, C# 10, targeting `net6.0`
+- Backend: ASP.NET Core Web API, targeting `net10.0` (matches installed
+  SDK 10.0.400; default C# language version, no LangVersion pin)
 - Frontend: Angular
 - Database: PostgreSQL (assumed installed locally; no Docker)
 - Repo: monorepo, `/backend` and `/frontend`
