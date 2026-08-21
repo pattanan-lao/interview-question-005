@@ -1,0 +1,5 @@
+{
+  "ConnectionStrings": {
+    "QueueDb": "Host=localhost;Port=5432;Database=queue_system;Username=queue_app;Password=REPLACE_ME"
+  }
+}
