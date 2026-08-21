@@ -88,8 +88,11 @@ requirement end to end through the real `QueueRepository`).
 
 ### IT 05-2 — Show Ticket Number
 - Displays `หมายเลขคิว` (Queue Number) and the issued date/time.
-- On load, calls `GET /api/queue/current` (resilient to page refresh /
-  direct navigation, not solely reliant on client router state).
+- On load, prefers the ticket passed via client router state (from IT 05-1)
+  so a page refresh keeps showing *this* ticket rather than whatever the
+  queue's current state has become; falls back to `GET /api/queue/current`
+  only when no router state is present (e.g. direct navigation to this
+  screen), so the screen is never left blank.
 - Button "กลับไปหน้ารับบัตรคิว" (Back to Take Ticket) → navigates to IT 05-1.
 
 ### IT 05-3 — Clear Queue
