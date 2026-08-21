@@ -16,10 +16,48 @@ inward, `Domain` at the center):
 - `Example.QueueSystem.Api` — composition root (DI, CORS) and HTTP controllers.
   Controllers depend on `IQueueService` only, never on the repository directly.
 
-## Prerequisites
+## Run with Docker (quickest)
+
+Requires Docker Desktop (or Docker Engine + Compose v2). Nothing else — no
+.NET SDK, Node, or PostgreSQL on the host.
+
+```bash
+cp .env.example .env
+# edit .env and set POSTGRES_PASSWORD
+docker compose up --build
+```
+
+Open `http://localhost:4200`.
+
+Three containers come up: PostgreSQL, the API, and nginx serving the Angular
+build. nginx also reverse-proxies `/api` to the API container, so the browser
+only ever talks to port 4200 — the API is not published on the host. To call
+it directly, go through the proxy:
+
+```bash
+curl http://localhost:4200/api/queue/current
+```
+
+PostgreSQL is published on host port **15432** so you can `psql` in or point
+the integration tests at it. The port is deliberately far from 5432/5433,
+which a local PostgreSQL install usually occupies; override it with
+`POSTGRES_HOST_PORT` in `.env` if 15432 is taken too. Data lives in the
+`queue_pgdata` named volume and survives `docker compose down`; use
+`docker compose down -v` to wipe the queue back to a clean state.
+
+> **Port clashes on Windows are silent.** If a local PostgreSQL already holds
+> the published port on `0.0.0.0`, Docker will bind only `::` and start without
+> complaint — then `Host=localhost` reaches your *local* server and fails with
+> `28P01: password authentication failed`. If you see that, the port is taken;
+> pick another via `POSTGRES_HOST_PORT`.
+
+To run everything on the host instead — with Angular hot-reload — follow the
+manual setup below.
+
+## Prerequisites (manual setup)
 
 - .NET SDK 10.0+
-- Node.js 20+ and npm
+- Node.js 22.22.3+ (or 24.15+/26+) and npm — the minimum Angular 22 requires
 - PostgreSQL 14+ running locally
 
 ## Database setup
@@ -65,6 +103,16 @@ $env:QUEUE_TEST_DB_CONNECTION_STRING = "Host=localhost;Port=5432;Database=queue_
 dotnet test backend/Example.QueueSystem.sln
 ```
 
+If you are using the Docker setup, `queue_system_test` is created for you on
+first startup — point the tests at port **15432** (or your `POSTGRES_HOST_PORT`)
+and your `.env` password instead:
+
+```bash
+# PowerShell
+$env:QUEUE_TEST_DB_CONNECTION_STRING = "Host=localhost;Port=15432;Database=queue_system_test;Username=queue_app;Password=your-.env-password"
+dotnet test backend/Example.QueueSystem.sln
+```
+
 Frontend tests:
 
 ```bash
@@ -79,7 +127,10 @@ npm install
 npm start
 ```
 
-Open `http://localhost:4200`. The backend must already be running on `http://localhost:5080`.
+Open `http://localhost:4200`. The backend must already be running on
+`http://localhost:5080`. The app calls the API at the relative path `/api`;
+`frontend/proxy.conf.json` forwards that to port 5080 during `ng serve`, and
+nginx does the same job in the Docker setup.
 
 ## Screens
 

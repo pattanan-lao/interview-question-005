@@ -12,7 +12,9 @@ as if working at a company called `example.com`.
 - Backend: ASP.NET Core Web API, targeting `net10.0` (matches installed
   SDK 10.0.400; default C# language version, no LangVersion pin)
 - Frontend: Angular
-- Database: PostgreSQL (assumed installed locally; no Docker)
+- Database: PostgreSQL. Two supported setups: a local install for
+  host-based development, or the containerized database from
+  `docker-compose.yml` (see "Deployment" below).
 - Repo: monorepo, `/backend` and `/frontend`
 
 ## Naming
@@ -168,8 +170,58 @@ same ticket number or skip a number, satisfying the requirement doc's
   xUnit, requires a live local PostgreSQL via a connection string in test
   config): fire N concurrent take-ticket requests and assert the
   resulting ticket set has no duplicates and no gaps. Documented in the
-  README as requiring a real DB to run, since local dev was chosen to be
-  Docker-free.
+  README as requiring a real DB to run — either a local PostgreSQL or the
+  `queue_system_test` database the compose setup creates on first startup
+  (published on host port 15432 by default).
+
+## Deployment (Docker Compose)
+
+`docker-compose.yml` at the repo root brings up the whole stack with
+`docker compose up --build`, so a reviewer needs neither the .NET SDK,
+Node, nor a local PostgreSQL:
+
+```
+browser :4200 -> [frontend]  /       -> Angular production build (nginx)
+                             /api/*  -> http://backend:8080
+                                            |
+                                   [backend] -> [postgres]
+```
+
+- **`postgres`** — `postgres:18-alpine`, data in the `queue_pgdata` named
+  volume, published on host **15432** (override: `POSTGRES_HOST_PORT`).
+  The port is deliberately far from 5432/5433, which a local PostgreSQL
+  install usually holds; on Windows such a clash is silent, because the
+  local server keeps `0.0.0.0` while Docker binds only `::`, so
+  `Host=localhost` reaches the wrong server and reports an authentication
+  failure rather than a bind error. `db/init/` also creates
+  `queue_system_test` for the
+  integration tests. A `pg_isready` healthcheck gates startup: the
+  backend declares `depends_on: condition: service_healthy`, which is
+  required rather than cosmetic, because `QueueSchema.EnsureCreatedAsync`
+  opens a connection at startup with no retry and would otherwise
+  crash-loop.
+- **`backend`** — multi-stage build (`sdk:10.0` publish -> `aspnet:10.0`
+  runtime), listening on 8080 inside the network and **not** published.
+  The connection string is injected as `ConnectionStrings__QueueDb`,
+  which `Program.cs` already reads via `GetConnectionString("QueueDb")` —
+  so containerization required no backend code change.
+- **`frontend`** — multi-stage build (`node:22` `npm run build` ->
+  `nginx:alpine`). nginx serves the bundle with an
+  `try_files ... /index.html` SPA fallback (so a hard refresh on
+  `/ticket` or `/clear` still works) and reverse-proxies `/api` to the
+  backend service.
+
+Because nginx proxies the API, `API_BASE_URL` is the relative `/api`
+rather than an absolute `http://localhost:5080/api` baked into the
+bundle. This makes every request same-origin — no CORS preflight, and
+the app works when reached over a LAN IP, not just `localhost`.
+`frontend/proxy.conf.json` gives `ng serve` the same `/api` -> `:5080`
+forwarding so the non-Docker dev loop is unchanged. The API's
+`AngularDevClient` CORS policy is kept for anyone calling the backend
+directly, but neither supported setup relies on it any more.
+
+The `POSTGRES_PASSWORD` comes from a gitignored `.env` (template:
+`.env.example`); compose fails fast with a message if it is unset.
 
 ## Limitations (documented in README)
 
