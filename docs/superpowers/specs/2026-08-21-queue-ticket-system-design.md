@@ -33,33 +33,38 @@ Example.QueueSystem.Api  ──────────────┐
         │  (composition root: DI, HTTP)│
         ▼                              ▼
 Example.QueueSystem.Application   Example.QueueSystem.Infrastructure
-        │  (ports + use cases)         │  (implements the ports)
-        ▼                              │
-Example.QueueSystem.Domain  ◄──────────┘
-   (pure business rules, zero dependencies)
+   (ports + use cases,                 │  (implements the ports)
+    no project references)             ▼
+                              Example.QueueSystem.Domain
+                           (pure business rules, zero dependencies)
 ```
 
 - **`Example.QueueSystem.Domain`** — pure business rules, no project or
   package references. Owns ticket-numbering logic (`TicketNumbering`,
   `QueuePosition`, `NextTicketOutcome`, `NextTicketResult`). Fully unit
   testable with no database.
-- **`Example.QueueSystem.Application`** — references `Domain` only.
-  Defines the port `IQueueRepository` (and its result types
-  `TakeTicketResult`, `CurrentQueueState`) that outer layers implement,
-  and the use-case interface/implementation `IQueueService`/`QueueService`
-  that the API layer calls. `QueueService` is a thin orchestrator today
-  (it delegates straight to `IQueueRepository`); it exists so business
-  rules that aren't purely numeric (e.g. future validation, logging,
-  notifications) have a layer to live in without the API talking to
-  persistence directly. Because it currently contains no branching logic
-  of its own, it is exercised through the Infrastructure integration
-  tests and the API smoke test rather than a redundant dedicated unit
-  test suite.
+- **`Example.QueueSystem.Application`** — no project references of its
+  own (pure C# on top of the BCL). Defines the port `IQueueRepository`
+  (and its result types `TakeTicketResult`, `CurrentQueueState`) that
+  outer layers implement, and the use-case interface/implementation
+  `IQueueService`/`QueueService` that the API layer calls. `QueueService`
+  is a thin orchestrator today (it delegates straight to
+  `IQueueRepository`); it exists so business rules that aren't purely
+  numeric (e.g. future validation, logging, notifications) have a layer
+  to live in without the API talking to persistence directly. It works
+  entirely in terms of the repository's result types rather than
+  `Domain` types, since the numbering decision is made inside
+  Infrastructure's transaction — so Application has no reason to
+  reference `Domain`, and doesn't. Because it currently contains no
+  branching logic of its own, it is exercised through the Infrastructure
+  integration tests and the API smoke test rather than a redundant
+  dedicated unit test suite.
 - **`Example.QueueSystem.Infrastructure`** — references `Application`
-  (and transitively `Domain`). Implements `IQueueRepository` against
-  PostgreSQL (`QueueRepository`, using `Domain.TicketNumbering` for the
-  actual numbering decision inside its transaction) and owns schema
-  bootstrap (`QueueSchema`).
+  (to implement `IQueueRepository`) and `Domain` (to compute the next
+  ticket). Implements `IQueueRepository` against PostgreSQL
+  (`QueueRepository`, using `Domain.TicketNumbering` for the actual
+  numbering decision inside its transaction) and owns schema bootstrap
+  (`QueueSchema`).
 - **`Example.QueueSystem.Api`** — references `Application` and
   `Infrastructure`. This is the only project allowed to reference
   `Infrastructure`, and only for composition-root DI registration in
