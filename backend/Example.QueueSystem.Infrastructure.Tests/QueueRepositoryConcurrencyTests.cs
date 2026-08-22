@@ -16,8 +16,9 @@ public class QueueRepositoryConcurrencyTests : IAsyncLifetime
                 "connection string (pointing at a disposable test database) to run this test. " +
                 "See README.md 'Running the integration tests'.");
 
-        _repository = new QueueRepository(connectionString);
-        await QueueSchema.ResetAsync(connectionString);
+        var dbContextFactory = new QueueDbContextFactory(connectionString);
+        _repository = new QueueRepository(dbContextFactory);
+        await QueueDbInitializer.ResetAsync(dbContextFactory);
     }
 
     public Task DisposeAsync() => Task.CompletedTask;

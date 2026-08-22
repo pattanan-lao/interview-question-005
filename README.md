@@ -11,8 +11,8 @@ inward, `Domain` at the center):
 - `Example.QueueSystem.Domain` — pure ticket-numbering rules, no dependencies.
 - `Example.QueueSystem.Application` — ports (`IQueueRepository`) and the
   use case (`IQueueService`/`QueueService`) the API calls.
-- `Example.QueueSystem.Infrastructure` — PostgreSQL implementation of
-  `IQueueRepository`, plus schema bootstrap.
+- `Example.QueueSystem.Infrastructure` — EF Core (Npgsql) implementation of
+  `IQueueRepository`: `QueueDbContext`, the entities, and the migrations.
 - `Example.QueueSystem.Api` — composition root (DI, CORS) and HTTP controllers.
   Controllers depend on `IQueueService` only, never on the repository directly.
 
@@ -70,8 +70,36 @@ CREATE DATABASE queue_system OWNER queue_app;
 CREATE DATABASE queue_system_test OWNER queue_app;
 ```
 
-The app creates its own tables on startup (see `QueueSchema.EnsureCreatedAsync`) —
-no separate migration step is needed.
+The app applies its EF Core migrations on startup (see
+`QueueDbInitializer.MigrateAsync`), creating the tables and seeding the singleton
+`queue_state` row — no separate migration step is needed.
+
+> **Upgrading from a pre-EF-Core database.** Earlier versions created the tables
+> with raw SQL and no `__EFMigrationsHistory`, and their `queue_state` has no
+> `version` column, so the schema cannot be baselined. Migrating an existing
+> database will fail with `relation "queue_state" already exists`. Drop the old
+> tables (or `docker compose down -v` for the Docker setup) and let the
+> migration recreate them.
+
+### Changing the schema
+
+The migrations live in `backend/Example.QueueSystem.Infrastructure/Migrations`.
+After editing `QueueDbContext` or an entity, scaffold the diff (requires
+`dotnet tool install --global dotnet-ef`):
+
+```bash
+cd backend
+dotnet ef migrations add YourMigrationName \
+  --project Example.QueueSystem.Infrastructure \
+  --startup-project Example.QueueSystem.Infrastructure \
+  --output-dir Migrations
+```
+
+Scaffolding never opens a connection — `DesignTimeQueueDbContextFactory` supplies
+a placeholder connection string. For commands that do reach the database
+(`dotnet ef database update`, `migrations remove` on an applied migration), set
+`QUEUE_DB_CONNECTION_STRING` first. Applying migrations by hand is optional in
+normal use: the API runs them at startup.
 
 ## Backend setup
 
@@ -94,8 +122,9 @@ dotnet test backend/Example.QueueSystem.Domain.Tests/Example.QueueSystem.Domain.
 
 Integration tests (require the `queue_system_test` database from the setup step above).
 **Warning:** point `QUEUE_TEST_DB_CONNECTION_STRING` at a disposable database only —
-the test fixture calls `QueueSchema.ResetAsync`, which drops and recreates tables, so
-pointing it at `queue_system` (the real dev database) would destroy your dev data.
+the test fixture calls `QueueDbInitializer.ResetAsync`, which drops the database and
+rebuilds it from the migrations, so pointing it at `queue_system` (the real dev
+database) would destroy your dev data.
 
 ```bash
 # PowerShell
