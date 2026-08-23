@@ -105,23 +105,22 @@ public class QueueRepository : IQueueRepository
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(ct);
 
+        // UpdatedAt doubles as the current ticket's issue time: TakeTicket writes one timestamp
+        // to both the state row and the ticket row in a single transaction, so reading it here
+        // gives a position and a timestamp that are guaranteed to describe the same ticket.
+        // Querying queue_tickets separately would not — the newest ticket row can already
+        // belong to a later position by the time a second round trip reads it.
         var state = await db.QueueStates
             .AsNoTracking()
             .Where(s => s.Id == QueueStateEntity.SingletonId)
-            .Select(s => new { s.CurrentLetterIndex, s.CurrentDigit })
+            .Select(s => new { s.CurrentLetterIndex, s.CurrentDigit, s.UpdatedAt })
             .SingleAsync(ct);
 
         var current = ToPosition(state.CurrentLetterIndex, state.CurrentDigit);
 
-        // Only meaningful when a ticket is outstanding: after a clear the queue reads "00" and
-        // the last ticket's timestamp would be misleading, so it is not queried at all.
-        DateTimeOffset? issuedAt = current is null
-            ? null
-            : await db.QueueTickets
-                .AsNoTracking()
-                .OrderByDescending(t => t.Id)
-                .Select(t => (DateTimeOffset?)t.IssuedAt)
-                .FirstOrDefaultAsync(ct);
+        // After a clear, UpdatedAt holds the time of the clear rather than of any ticket, so it
+        // is deliberately not reported: a cleared queue reads "00" with no timestamp.
+        DateTimeOffset? issuedAt = current is null ? null : state.UpdatedAt;
 
         return new CurrentQueueState(TicketNumbering.Format(current), issuedAt);
     }

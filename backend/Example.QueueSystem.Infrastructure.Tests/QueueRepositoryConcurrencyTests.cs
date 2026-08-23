@@ -91,5 +91,28 @@ public class QueueRepositoryConcurrencyTests : IAsyncLifetime
 
         Assert.Equal(taken.TicketNumber, current.TicketNumber);
         Assert.NotNull(current.IssuedAt);
+
+        // The reported timestamp must be the one this very ticket was issued with, not merely
+        // some non-null time. Compared with a tolerance because PostgreSQL stores timestamptz to
+        // microsecond precision while the in-memory value carries 100ns ticks.
+        var skew = (current.IssuedAt!.Value - taken.IssuedAt!.Value).Duration();
+        Assert.True(
+            skew < TimeSpan.FromMilliseconds(1),
+            $"Expected the current timestamp to match the issued ticket's, but they differ by {skew}.");
+    }
+
+    [Fact]
+    public async Task GetCurrentAsync_AfterClear_ReturnsZeroZeroWithNoIssuedAt()
+    {
+        await _repository.TakeTicketAsync(CancellationToken.None);
+        await _repository.ClearAsync(CancellationToken.None);
+
+        var current = await _repository.GetCurrentAsync(CancellationToken.None);
+
+        // Clearing stamps queue_state.updated_at with the time of the clear. That is not a
+        // ticket issue time, so a cleared queue must report no timestamp even though the ticket
+        // log still holds the rows issued before the clear.
+        Assert.Equal("00", current.TicketNumber);
+        Assert.Null(current.IssuedAt);
     }
 }
