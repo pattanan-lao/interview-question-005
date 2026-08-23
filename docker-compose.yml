@@ -41,7 +41,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
     depends_on:
       postgres:
-        # Required, not cosmetic: QueueSchema.EnsureCreatedAsync opens a
+        # Required, not cosmetic: QueueDbInitializer.MigrateAsync opens a
         # connection at startup with no retry, so the API would crash-loop
         # if it started before PostgreSQL was accepting connections.
         condition: service_healthy

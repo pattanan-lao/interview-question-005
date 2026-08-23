@@ -1,5 +1,6 @@
 using Example.QueueSystem.Application;
 using Example.QueueSystem.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,7 +12,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
         "to appsettings.Development.json and fill in your local PostgreSQL password.");
 }
 
-builder.Services.AddSingleton<IQueueRepository>(_ => new QueueRepository(connectionString));
+builder.Services.AddQueueInfrastructure(connectionString);
 builder.Services.AddScoped<IQueueService, QueueService>();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -28,7 +29,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-await QueueSchema.EnsureCreatedAsync(connectionString);
+await QueueDbInitializer.MigrateAsync(app.Services.GetRequiredService<IDbContextFactory<QueueDbContext>>());
 
 if (app.Environment.IsDevelopment())
 {
